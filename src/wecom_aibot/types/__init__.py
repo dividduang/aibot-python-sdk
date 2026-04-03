@@ -1,6 +1,6 @@
 """类型定义模块"""
 
-from wecom_aibot.types.config import WSClientOptions, Logger
+from wecom_aibot.types.config import WSClientOptions, Logger, BotConfig, BotStatus
 from wecom_aibot.types.message import (
     MessageType,
     BaseMessage,
@@ -69,6 +69,8 @@ __all__ = [
     # Config types
     "WSClientOptions",
     "Logger",
+    "BotConfig",
+    "BotStatus",
     # Message types
     "MessageType",
     "BaseMessage",

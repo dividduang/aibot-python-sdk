@@ -16,6 +16,7 @@
 - ✅ 模板卡片消息
 - ✅ 文件下载与 AES-256-CBC 解密
 - ✅ 事件回调：enter_chat, template_card_event, feedback_event
+- ✅ **多机器人管理**（同时运行多个机器人，统一事件路由）
 - ✅ 完整类型提示 (Type Hints)
 - ✅ 异步支持 (asyncio)
 
@@ -187,12 +188,116 @@ buffer, filename = await client.download_file(url, aes_key)
 client.is_connected  # bool
 ```
 
+## 多机器人管理
+
+SDK 内置 `BotManager`，支持同时管理多个企业微信机器人，统一事件路由。
+
+### 方式一：JSON 配置文件
+
+```json
+// bots_config.json
+{
+    "bots": [
+        { "name": "客服机器人", "bot_id": "xxx", "secret": "xxx" },
+        { "name": "技术支持",   "bot_id": "yyy", "secret": "yyy" }
+    ]
+}
+```
+
+```python
+from wecom_aibot import BotManager
+
+manager = BotManager()
+manager.load_from_json("bots_config.json")
+
+# 按机器人名注册事件
+@manager.on("客服机器人.message.text")
+async def on_service_text(frame):
+    client = manager.get_bot("客服机器人")
+    await client.reply_stream(frame, "s1", "客服回复", finish=True)
+
+@manager.on("技术支持.message.text")
+async def on_tech_text(frame):
+    client = manager.get_bot("技术支持")
+    await client.reply_stream(frame, "s2", "技术支持回复", finish=True)
+
+# 全局事件（任意机器人）
+@manager.on("bot.connected")
+def on_any(name: str):
+    print(f"已连接: {name}")
+
+manager.connect_all()
+```
+
+### 方式二：环境变量
+
+```bash
+# .env
+WECOM_BOTS_COUNT=2
+WECOM_BOT_1_NAME=客服机器人
+WECOM_BOT_1_BOT_ID=xxx
+WECOM_BOT_1_BOT_SECRET=xxx
+WECOM_BOT_2_NAME=技术支持
+WECOM_BOT_2_BOT_ID=yyy
+WECOM_BOT_2_BOT_SECRET=yyy
+```
+
+```python
+manager = BotManager()
+manager.load_from_env()
+manager.connect_all()
+```
+
+### 方式三：兼容旧版单机器人
+
+```bash
+WECOM_BOT_ID=xxx
+WECOM_BOT_SECRET=xxx
+```
+
+```python
+manager = BotManager()
+manager.load_from_env()  # 自动检测，名称为 "default"
+manager.connect_all()
+```
+
+### BotManager API
+
+| 方法 | 说明 |
+|------|------|
+| `add_bot(config)` | 添加单个机器人配置 |
+| `load_from_env()` | 从环境变量加载（自动检测多/单机器人） |
+| `load_from_json(path)` | 从 JSON 文件加载 |
+| `load_from_dict(data)` | 从字典加载 |
+| `connect_all()` | 连接所有机器人 |
+| `connect_bot(name)` | 连接指定机器人 |
+| `disconnect_all()` | 断开所有机器人（async） |
+| `disconnect_bot(name)` | 断开指定机器人（async） |
+| `get_bot(name)` | 按名称获取 WSClient |
+| `get_status(name)` | 获取运行状态 |
+| `get_all_statuses()` | 获取所有状态 |
+| `print_status()` | 打印状态总览 |
+| `bot_names` | 所有机器人名称列表 |
+| `bot_count` | 机器人数量 |
+
+### 多机器人事件命名
+
+| 事件 | 说明 |
+|------|------|
+| `{name}.message.text` | 指定机器人的文本消息 |
+| `{name}.event.enter_chat` | 指定机器人的进入会话事件 |
+| `{name}.error` | 指定机器人的错误 |
+| `bot.connected` | 任意机器人连接成功（参数: name） |
+| `bot.disconnected` | 任意机器人断开（参数: name, reason） |
+| `bot.error` | 任意机器人错误（参数: name, error） |
+
 ## 项目结构
 
 ```
 src/wecom_aibot/
 ├── __init__.py          # 包入口
 ├── client.py            # WSClient 主客户端
+├── bot_manager.py       # BotManager 多机器人管理器
 ├── ws_manager.py        # WebSocket 连接管理器
 ├── api_client.py        # HTTP API 客户端
 ├── message_handler.py   # 消息处理器
@@ -201,7 +306,7 @@ src/wecom_aibot/
 ├── utils.py             # 工具函数
 └── types/
     ├── __init__.py
-    ├── config.py        # 配置类型
+    ├── config.py        # 配置类型（BotConfig, BotStatus）
     ├── message.py       # 消息类型
     ├── event.py         # 事件类型
     ├── api.py           # API 类型
@@ -227,7 +332,9 @@ cd wecom-aibot
 uv sync --extra dev
 
 # 运行示例
-uv run python example_basic.py
+uv run python example_basic.py          # 单机器人
+uv run python example_multi_bot.py      # 多机器人（环境变量）
+uv run python example_multi_bot.py --config bots_config.json  # 多机器人（JSON）
 ```
 
 ## 相关链接

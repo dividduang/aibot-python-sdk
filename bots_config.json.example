@@ -1,0 +1,23 @@
+{
+    "bots": [
+        {
+            "name": "客服机器人",
+            "bot_id": "your-bot-id-1",
+            "secret": "your-bot-secret-1",
+            "ws_url": "wss://openws.work.weixin.qq.com",
+            "heartbeat_interval": 30000,
+            "max_reconnect_attempts": 10
+        },
+        {
+            "name": "技术支持机器人",
+            "bot_id": "your-bot-id-2",
+            "secret": "your-bot-secret-2"
+        },
+        {
+            "name": "销售助手",
+            "bot_id": "your-bot-id-3",
+            "secret": "your-bot-secret-3",
+            "heartbeat_interval": 60000
+        }
+    ]
+}
