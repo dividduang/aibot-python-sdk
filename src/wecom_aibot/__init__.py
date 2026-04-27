@@ -23,6 +23,13 @@ from wecom_aibot.types import (
     UploadMediaOptions,
     UploadMediaFinishResult,
 )
+from wecom_aibot.crypto import (
+    WecomCrypto,
+    decrypt_file,
+    decode_encoding_aes_key,
+    pkcs7_pad,
+    pkcs7_unpad,
+)
 from wecom_aibot.exceptions import (
     UploadError,
     UploadInitError,
@@ -54,6 +61,12 @@ __all__ = [
     "VideoOptions",
     "UploadMediaOptions",
     "UploadMediaFinishResult",
+    # Crypto
+    "WecomCrypto",
+    "decrypt_file",
+    "decode_encoding_aes_key",
+    "pkcs7_pad",
+    "pkcs7_unpad",
     # Exceptions
     "UploadError",
     "UploadInitError",
