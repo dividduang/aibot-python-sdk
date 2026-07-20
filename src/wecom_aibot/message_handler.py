@@ -15,10 +15,12 @@ from wecom_aibot.types.message import (
     MixedMessage,
     VoiceMessage,
     FileMessage,
+    VideoMessage,
     TextContent,
     ImageContent,
     VoiceContent,
     FileContent,
+    VideoContent,
     MixedContent,
     MixedMsgItem,
     MessageFrom,
@@ -103,6 +105,9 @@ class MessageHandler:
         elif msgtype == MessageType.FILE:
             message = self._parse_file_message(body, base_msg)
             emitter.emit("message.file", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
+        elif msgtype == MessageType.VIDEO:
+            message = self._parse_video_message(body, base_msg)
+            emitter.emit("message.video", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
         else:
             self.logger.debug(f"未处理的消息类型: {msgtype}")
 
@@ -255,6 +260,25 @@ class MessageHandler:
             ),
         )
 
+    def _parse_video_message(self, body: dict[str, Any], base: BaseMessage) -> VideoMessage:
+        """解析视频消息"""
+        video_data = body.get("video", {})
+        return VideoMessage(
+            msgid=base.msgid,
+            aibotid=base.aibotid,
+            chattype=base.chattype,
+            from_=base.from_,
+            chatid=base.chatid,
+            create_time=base.create_time,
+            response_url=base.response_url,
+            quote=base.quote,
+            _raw=base._raw,
+            video=VideoContent(
+                url=video_data.get("url", ""),
+                aeskey=video_data.get("aeskey"),
+            ),
+        )
+
     def _parse_quote_content(self, quote_data: dict[str, Any]) -> QuoteContent:
         """解析引用内容"""
         msgtype = quote_data.get("msgtype", "text")
@@ -266,6 +290,29 @@ class MessageHandler:
         elif msgtype == "image":
             img_data = quote_data.get("image", {})
             quote.image = ImageContent(url=img_data.get("url", ""), aeskey=img_data.get("aeskey"))
+        elif msgtype == "file":
+            file_data = quote_data.get("file", {})
+            quote.file = FileContent(url=file_data.get("url", ""), aeskey=file_data.get("aeskey"))
+        elif msgtype == "video":
+            video_data = quote_data.get("video", {})
+            quote.video = VideoContent(url=video_data.get("url", ""), aeskey=video_data.get("aeskey"))
+        elif msgtype == "voice":
+            voice_data = quote_data.get("voice", {})
+            quote.voice = VoiceContent(content=voice_data.get("content", ""))
+        elif msgtype == "mixed":
+            mixed_data = quote_data.get("mixed", {})
+            msg_items = []
+            for item in mixed_data.get("msg_item", []):
+                item_type = item.get("msgtype", "text")
+                text = None
+                image = None
+                if item_type == "text":
+                    text = TextContent(content=item.get("text", {}).get("content", ""))
+                elif item_type == "image":
+                    img_data = item.get("image", {})
+                    image = ImageContent(url=img_data.get("url", ""), aeskey=img_data.get("aeskey"))
+                msg_items.append(MixedMsgItem(msgtype=item_type, text=text, image=image))
+            quote.mixed = MixedContent(msg_item=msg_items)
 
         return quote
 

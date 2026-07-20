@@ -37,6 +37,10 @@ env/
 .env
 .env.local
 .env.*.local
+bots_config.json
+
+# Example runtime artifacts
+examples/downloads/
 
 # Testing
 .pytest_cache/

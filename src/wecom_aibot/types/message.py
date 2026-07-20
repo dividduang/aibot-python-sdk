@@ -14,6 +14,7 @@ class MessageType(StrEnum):
     MIXED = "mixed"
     VOICE = "voice"
     FILE = "file"
+    VIDEO = "video"
 
 
 @dataclass
@@ -47,6 +48,14 @@ class FileContent:
 
 
 @dataclass
+class VideoContent:
+    """视频结构体"""
+
+    url: str
+    aeskey: str | None = None
+
+
+@dataclass
 class MixedMsgItem:
     """图文混排子项"""
 
@@ -66,12 +75,13 @@ class MixedContent:
 class QuoteContent:
     """引用结构体"""
 
-    msgtype: Literal["text", "image", "mixed", "voice", "file"]
+    msgtype: Literal["text", "image", "mixed", "voice", "file", "video"]
     text: TextContent | None = None
     image: ImageContent | None = None
     mixed: MixedContent | None = None
     voice: VoiceContent | None = None
     file: FileContent | None = None
+    video: VideoContent | None = None
 
 
 @dataclass
@@ -141,3 +151,11 @@ class FileMessage(BaseMessage):
 
     msgtype: Literal[MessageType.FILE] = MessageType.FILE
     file: FileContent = field(default_factory=lambda: FileContent(""))
+
+
+@dataclass
+class VideoMessage(BaseMessage):
+    """视频消息"""
+
+    msgtype: Literal[MessageType.VIDEO] = MessageType.VIDEO
+    video: VideoContent = field(default_factory=lambda: VideoContent(""))

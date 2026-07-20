@@ -3,88 +3,75 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-企业微信智能机器人 Python SDK - WebSocket 长连接通道
+企业微信智能机器人 Python SDK —— 基于 WebSocket 长连接通道。
 
-将 Node.js SDK [`@wecom/aibot-node-sdk`](https://github.com/WecomTeam/aibot-node-sdk) 完整移植到 Python，提供完整的类型提示和异步支持。
+将 Node.js SDK [`@wecom/aibot-node-sdk`](https://github.com/WecomTeam/aibot-node-sdk) 移植到 Python，提供完整类型提示与异步支持，并额外支持多机器人管理。
 
 ## 功能特性
 
-- ✅ WebSocket 长连接（自动认证）
-- ✅ 心跳保持与自动重连（指数退避）
-- ✅ 消息类型：text, image, mixed, voice, file
-- ✅ 流式回复（支持 Markdown）
-- ✅ 模板卡片消息
-- ✅ 文件下载与 AES-256-CBC 解密
-- ✅ 事件回调：enter_chat, template_card_event, feedback_event
-- ✅ **多机器人管理**（同时运行多个机器人，统一事件路由）
-- ✅ 完整类型提示 (Type Hints)
-- ✅ 异步支持 (asyncio)
+| 能力 | 说明 | Node SDK |
+|------|------|----------|
+| WebSocket 长连接 | 自动认证、心跳、指数退避重连 | ✅ |
+| 消息类型 | text / image / mixed / voice / file / **video** | ✅ |
+| 流式回复 | Markdown，支持图文混排 | ✅ |
+| 模板卡片 | 回复、流式+卡片、更新卡片 | ✅ |
+| 主动推送 | Markdown / 模板卡片 / 媒体 | ✅ |
+| 媒体上传 | 分片上传临时素材（file/image/voice/video） | ✅ |
+| 文件下载解密 | AES-256-CBC（消息自带 aeskey） | ✅ |
+| 事件回调 | enter_chat / template_card_event / feedback_event | ✅ |
+| **多机器人** | `BotManager` 统一事件路由 | Python 增强 |
+| 类型提示 | 完整 Type Hints + asyncio | — |
 
 ## 安装
 
 ```bash
-# 使用 pip
 pip install wecom-aibot
-
-# 或使用 uv
+# 或
 uv add wecom-aibot
 ```
 
 ## 快速开始
 
-### 1. 配置环境变量
-
 ```bash
-# 复制配置模板
 cp .env.example .env
-
-# 编辑 .env 文件
-WECOM_BOT_ID=your-bot-id
-WECOM_BOT_SECRET=your-secret
+# 编辑 .env：WECOM_BOT_ID / WECOM_BOT_SECRET
 ```
-
-### 2. 编写代码
 
 ```python
 import asyncio
+import os
 from dotenv import load_dotenv
-from wecom_aibot import WSClient, WSClientOptions
+from wecom_aibot import WSClient, generate_req_id
+from wecom_aibot.types import WSClientOptions, WelcomeTextReplyBody
 
 load_dotenv()
 
 async def main():
-    import os
-
-    # 创建客户端
-    options = WSClientOptions(
+    client = WSClient(WSClientOptions(
         bot_id=os.getenv("WECOM_BOT_ID"),
         secret=os.getenv("WECOM_BOT_SECRET"),
-    )
-    client = WSClient(options)
+    ))
 
-    # 处理文本消息
+    @client.on("authenticated")
+    def on_auth():
+        print("认证成功")
+
     @client.on("message.text")
     async def on_text(frame):
+        content = frame.body.text.content
+        stream_id = generate_req_id("stream")
+        await client.reply_stream(frame, stream_id, "正在思考...", finish=False)
         await client.reply_stream(
-            frame,
-            "stream_001",
-            f"收到: {frame.body.text.content}",
-            finish=True,
+            frame, stream_id, f"收到: {content}", finish=True
         )
 
-    # 处理进入会话事件
     @client.on("event.enter_chat")
     async def on_enter(frame):
-        from wecom_aibot.types import WelcomeTextReplyBody
         await client.reply_welcome(
-            frame,
-            WelcomeTextReplyBody.create("您好！有什么可以帮您的？")
+            frame, WelcomeTextReplyBody.create("您好！有什么可以帮您的？")
         )
 
-    # 连接
     client.connect()
-
-    # 保持运行
     try:
         while True:
             await asyncio.sleep(1)
@@ -94,19 +81,37 @@ async def main():
 asyncio.run(main())
 ```
 
+完整可运行示例见 [`examples/`](./examples/)。
+
+## 示例
+
+| 文件 | 说明 |
+|------|------|
+| [`examples/example_basic.py`](./examples/example_basic.py) | 综合示例（对齐 Node `examples/basic.ts`） |
+| [`examples/example_send_message.py`](./examples/example_send_message.py) | 主动推送 Markdown / 卡片 |
+| [`examples/example_upload_media.py`](./examples/example_upload_media.py) | 上传素材、被动/主动发媒体 |
+| [`examples/example_event_message.py`](./examples/example_event_message.py) | 进入会话 / 卡片交互 / 反馈 |
+| [`examples/example_multi_bot.py`](./examples/example_multi_bot.py) | 多机器人 `BotManager` |
+
+```bash
+uv sync --extra dev
+uv run python examples/example_basic.py
+uv run python examples/example_multi_bot.py --config bots_config.json
+```
+
 ## API 文档
 
 ### WSClientOptions
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `bot_id` | str | 必填 | 机器人 ID（企业微信后台获取） |
+| `bot_id` | str | 必填 | 机器人 ID |
 | `secret` | str | 必填 | 机器人 Secret |
 | `heartbeat_interval` | int | 30000 | 心跳间隔（毫秒） |
-| `max_reconnect_attempts` | int | 10 | 最大重连次数，-1 表示无限 |
+| `max_reconnect_attempts` | int | 10 | 最大重连次数，-1 无限 |
 | `reconnect_interval` | int | 1000 | 重连基础延迟（毫秒） |
-| `request_timeout` | int | 10000 | 请求超时（毫秒） |
-| `ws_url` | str | wss://openws.work.weixin.qq.com | WebSocket 地址 |
+| `request_timeout` | int | 10000 | HTTP 请求超时（毫秒） |
+| `ws_url` | str | `wss://openws.work.weixin.qq.com` | WebSocket 地址 |
 | `logger` | Logger | None | 自定义日志器 |
 
 ### 事件列表
@@ -123,84 +128,76 @@ asyncio.run(main())
 
 #### 消息事件
 
-| 事件名 | 说明 | frame.body 类型 |
-|--------|------|-----------------|
-| `message` | 收到消息（所有类型） | BaseMessage |
-| `message.text` | 收到文本消息 | TextMessage |
-| `message.image` | 收到图片消息 | ImageMessage |
-| `message.mixed` | 收到图文混排消息 | MixedMessage |
-| `message.voice` | 收到语音消息 | VoiceMessage |
-| `message.file` | 收到文件消息 | FileMessage |
+| 事件名 | 说明 |
+|--------|------|
+| `message` | 所有消息 |
+| `message.text` | 文本 |
+| `message.image` | 图片 |
+| `message.mixed` | 图文混排 |
+| `message.voice` | 语音（已转文本） |
+| `message.file` | 文件 |
+| `message.video` | 视频 |
 
 #### 事件回调
 
-| 事件名 | 说明 | frame.body 类型 |
-|--------|------|-----------------|
-| `event` | 收到事件（所有类型） | EventMessage |
-| `event.enter_chat` | 用户进入会话 | EventMessage |
-| `event.template_card_event` | 模板卡片事件 | EventMessage |
-| `event.feedback_event` | 用户反馈事件 | EventMessage |
+| 事件名 | 说明 |
+|--------|------|
+| `event` | 所有事件 |
+| `event.enter_chat` | 用户进入会话（欢迎语需 5s 内） |
+| `event.template_card_event` | 模板卡片按钮（更新需 5s 内） |
+| `event.feedback_event` | 用户反馈 |
 
 ### 客户端方法
 
+方法命名：Python 风格为 snake_case；媒体相关方法同时提供与 Node 一致的 camelCase 别名。
+
+| 方法 | 说明 |
+|------|------|
+| `connect()` | 建立连接，返回 self |
+| `disconnect()` | 断开连接（async） |
+| `reply(frame, body, cmd?)` | 通用回复 |
+| `reply_stream(frame, stream_id, content, finish?, ...)` | 流式文本回复 |
+| `reply_welcome(frame, body)` | 欢迎语（text / 模板卡片） |
+| `reply_template_card(frame, card, feedback?)` | 回复模板卡片 |
+| `reply_stream_with_card(frame, stream_id, content, finish?, ...)` | 流式 + 卡片 |
+| `update_template_card(frame, card, userids?)` | 更新模板卡片 |
+| `send_message(chatid, body)` | 主动发送 Markdown / 卡片 / 媒体 |
+| `upload_media` / `uploadMedia` | 分片上传临时素材 |
+| `reply_media` / `replyMedia` | 被动回复媒体 |
+| `send_media_message` / `sendMediaMessage` | 主动发送媒体 |
+| `download_file(url, aes_key?)` | 下载并 AES 解密 |
+| `is_connected` | 连接状态 |
+| `api` | 底层 HTTP 客户端 |
+
 ```python
-# 连接/断开
-client.connect()                      # 建立连接
-await client.disconnect()             # 断开连接
+from wecom_aibot import generate_req_id
+from wecom_aibot.types import SendMarkdownMsgBody, UploadMediaOptions
 
-# 流式回复
-await client.reply_stream(
-    frame,                             # 消息帧
-    stream_id,                         # 流式消息 ID
-    content,                           # 回复内容（支持 Markdown）
-    finish=True                        # 是否结束
-)
+stream_id = generate_req_id("stream")
+await client.reply_stream(frame, stream_id, "处理中...", finish=False)
+await client.reply_stream(frame, stream_id, "完成", finish=True)
 
-# 欢迎语回复
-await client.reply_welcome(
-    frame,
-    WelcomeTextReplyBody.create("您好！")
-)
+await client.send_message(chatid, SendMarkdownMsgBody.create("主动推送"))
 
-# 模板卡片回复
-await client.reply_template_card(frame, template_card)
+result = await client.upload_media(file_bytes, UploadMediaOptions(type="image", filename="a.png"))
+await client.reply_media(frame, "image", result.media_id)
 
-# 流式消息 + 模板卡片组合回复
-await client.reply_stream_with_card(
-    frame, stream_id, content, finish=True,
-    template_card=card
-)
-
-# 更新模板卡片
-await client.update_template_card(frame, template_card, userids=["user1"])
-
-# 主动发送消息
-from wecom_aibot.types import SendMarkdownMsgBody
-await client.send_message(
-    chatid,
-    SendMarkdownMsgBody.create("主动推送的消息")
-)
-
-# 下载文件（自动解密）
 buffer, filename = await client.download_file(url, aes_key)
-
-# 获取连接状态
-client.is_connected  # bool
 ```
 
 ## 多机器人管理
 
-SDK 内置 `BotManager`，支持同时管理多个企业微信机器人，统一事件路由。
+Python SDK 额外提供 `BotManager`（Node SDK 无对应模块）。
 
-### 方式一：JSON 配置文件
+### JSON 配置
 
 ```json
-// bots_config.json
+// bots_config.json（可参考 bots_config.json.example）
 {
-    "bots": [
-        { "name": "客服机器人", "bot_id": "xxx", "secret": "xxx" },
-        { "name": "技术支持",   "bot_id": "yyy", "secret": "yyy" }
-    ]
+  "bots": [
+    { "name": "客服机器人", "bot_id": "xxx", "secret": "xxx" },
+    { "name": "技术支持", "bot_id": "yyy", "secret": "yyy" }
+  ]
 }
 ```
 
@@ -210,18 +207,11 @@ from wecom_aibot import BotManager
 manager = BotManager()
 manager.load_from_json("bots_config.json")
 
-# 按机器人名注册事件
 @manager.on("客服机器人.message.text")
 async def on_service_text(frame):
     client = manager.get_bot("客服机器人")
     await client.reply_stream(frame, "s1", "客服回复", finish=True)
 
-@manager.on("技术支持.message.text")
-async def on_tech_text(frame):
-    client = manager.get_bot("技术支持")
-    await client.reply_stream(frame, "s2", "技术支持回复", finish=True)
-
-# 全局事件（任意机器人）
 @manager.on("bot.connected")
 def on_any(name: str):
     print(f"已连接: {name}")
@@ -229,10 +219,9 @@ def on_any(name: str):
 manager.connect_all()
 ```
 
-### 方式二：环境变量
+### 环境变量
 
 ```bash
-# .env
 WECOM_BOTS_COUNT=2
 WECOM_BOT_1_NAME=客服机器人
 WECOM_BOT_1_BOT_ID=xxx
@@ -242,75 +231,34 @@ WECOM_BOT_2_BOT_ID=yyy
 WECOM_BOT_2_BOT_SECRET=yyy
 ```
 
-```python
-manager = BotManager()
-manager.load_from_env()
-manager.connect_all()
-```
-
-### 方式三：兼容旧版单机器人
-
-```bash
-WECOM_BOT_ID=xxx
-WECOM_BOT_SECRET=xxx
-```
-
-```python
-manager = BotManager()
-manager.load_from_env()  # 自动检测，名称为 "default"
-manager.connect_all()
-```
-
-### BotManager API
-
-| 方法 | 说明 |
-|------|------|
-| `add_bot(config)` | 添加单个机器人配置 |
-| `load_from_env()` | 从环境变量加载（自动检测多/单机器人） |
-| `load_from_json(path)` | 从 JSON 文件加载 |
-| `load_from_dict(data)` | 从字典加载 |
-| `connect_all()` | 连接所有机器人 |
-| `connect_bot(name)` | 连接指定机器人 |
-| `disconnect_all()` | 断开所有机器人（async） |
-| `disconnect_bot(name)` | 断开指定机器人（async） |
-| `get_bot(name)` | 按名称获取 WSClient |
-| `get_status(name)` | 获取运行状态 |
-| `get_all_statuses()` | 获取所有状态 |
-| `print_status()` | 打印状态总览 |
-| `bot_names` | 所有机器人名称列表 |
-| `bot_count` | 机器人数量 |
-
-### 多机器人事件命名
-
-| 事件 | 说明 |
-|------|------|
-| `{name}.message.text` | 指定机器人的文本消息 |
-| `{name}.event.enter_chat` | 指定机器人的进入会话事件 |
-| `{name}.error` | 指定机器人的错误 |
-| `bot.connected` | 任意机器人连接成功（参数: name） |
-| `bot.disconnected` | 任意机器人断开（参数: name, reason） |
-| `bot.error` | 任意机器人错误（参数: name, error） |
+单机器人兼容：`WECOM_BOT_ID` + `WECOM_BOT_SECRET`（名称为 `default`）。
 
 ## 项目结构
 
 ```
-src/wecom_aibot/
-├── __init__.py          # 包入口
-├── client.py            # WSClient 主客户端
-├── bot_manager.py       # BotManager 多机器人管理器
-├── ws_manager.py        # WebSocket 连接管理器
-├── api_client.py        # HTTP API 客户端
-├── message_handler.py   # 消息处理器
-├── crypto.py            # AES-256-CBC 解密
-├── logger.py            # 日志实现
-├── utils.py             # 工具函数
-└── types/
-    ├── __init__.py
-    ├── config.py        # 配置类型（BotConfig, BotStatus）
-    ├── message.py       # 消息类型
-    ├── event.py         # 事件类型
-    ├── api.py           # API 类型
-    └── template_card.py # 模板卡片类型
+aibot-python-sdk/
+├── examples/                 # 全部 demo（对照 Node examples/）
+│   ├── example_basic.py
+│   ├── example_send_message.py
+│   ├── example_upload_media.py
+│   ├── example_event_message.py
+│   ├── example_multi_bot.py
+│   └── README.md
+├── src/wecom_aibot/
+│   ├── __init__.py
+│   ├── client.py             # WSClient
+│   ├── bot_manager.py        # 多机器人
+│   ├── ws_manager.py
+│   ├── api_client.py
+│   ├── message_handler.py
+│   ├── crypto.py
+│   ├── logger.py
+│   ├── utils.py              # generate_req_id 等
+│   ├── exceptions.py
+│   └── types/
+├── tests/
+├── pyproject.toml
+└── README.md
 ```
 
 ## 依赖
@@ -324,17 +272,11 @@ src/wecom_aibot/
 ## 开发
 
 ```bash
-# 克隆项目
-git clone https://github.com/your-username/wecom-aibot.git
-cd wecom-aibot
-
-# 安装开发依赖
+git clone <repo>
+cd aibot-python-sdk
 uv sync --extra dev
-
-# 运行示例
-uv run python example_basic.py          # 单机器人
-uv run python example_multi_bot.py      # 多机器人（环境变量）
-uv run python example_multi_bot.py --config bots_config.json  # 多机器人（JSON）
+uv run pytest
+uv run python examples/example_basic.py
 ```
 
 ## 相关链接

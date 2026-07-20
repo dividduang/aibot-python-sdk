@@ -650,6 +650,11 @@ class WSClient(AsyncIOEventEmitter):
         }
         return await self._ws_manager.send_reply(req_id, full_body, WsCmd.SEND_MSG)
 
+    # Pythonic snake_case aliases（与 Node SDK camelCase 方法等价）
+    upload_media = uploadMedia
+    reply_media = replyMedia
+    send_media_message = sendMediaMessage
+
     @property
     def is_connected(self) -> bool:
         """获取当前连接状态"""
