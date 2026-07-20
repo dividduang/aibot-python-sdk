@@ -357,9 +357,9 @@ class BotManager(AsyncIOEventEmitter):
     def print_status(self) -> None:
         """打印所有机器人状态"""
         statuses = self.get_all_statuses()
-        self._logger.info(f"═══ 机器人状态总览 ({len(statuses)} 个) ═══")
+        self._logger.info(f"=== 机器人状态总览 ({len(statuses)} 个) ===")
         for name, status in statuses.items():
-            conn = "✓ 已连接" if status.connected else "✗ 未连接"
-            auth = "✓ 已认证" if status.authenticated else "✗ 未认证"
+            conn = "[OK] 已连接" if status.connected else "[--] 未连接"
+            auth = "[OK] 已认证" if status.authenticated else "[--] 未认证"
             error = f" | 错误: {status.last_error}" if status.last_error else ""
             self._logger.info(f"  [{name}] {conn} | {auth}{error}")

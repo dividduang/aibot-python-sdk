@@ -51,7 +51,7 @@ def register_bot_handlers(manager: BotManager, bot_name: str) -> None:
 
     @manager.on(f"{bot_name}.authenticated")
     def on_authenticated() -> None:
-        print(f"[{bot_name}] 认证成功 ✓")
+        print(f"[{bot_name}] 认证成功 [OK]")
 
     @manager.on(f"{bot_name}.message.text")
     async def on_text_message(frame) -> None:
