@@ -134,16 +134,43 @@ class TestTopicAtBotEvent:
 
 
 class TestTopicEvent:
-    """未公开结构的频道事件：保留原始数据"""
+    """频道事件解析（载荷取自实测推送）"""
+
+    TOPIC_EVENT_BODY: dict[str, Any] = {
+        **TOPIC_AT_BOT_BODY,
+        "msgid": "0e353ee324f9f059a5236c46206a8084",
+        "create_time": 1791958860,
+        "event": {
+            "eventtype": "topic_event",
+            "topic_event": {"type": 1, "post_id": "CiA9HKOq9RH4YNXYDSEJg2pBhys0NdubSvfgsqQSMhiOVBAB"},
+        },
+    }
+
+    def test_type_and_post_id(self):
+        msg = dispatch(self.TOPIC_EVENT_BODY, cmd="aibot_event_callback").bodies("event.topic_event")[0]
+        assert isinstance(msg.event, TopicEvent)
+        assert msg.event.eventtype == EventType.TOPIC_EVENT
+        assert msg.event.type == 1
+        assert msg.event.post_id == "CiA9HKOq9RH4YNXYDSEJg2pBhys0NdubSvfgsqQSMhiOVBAB"
+
+    def test_topic_id_shared_with_at_bot(self):
+        msg = dispatch(self.TOPIC_EVENT_BODY, cmd="aibot_event_callback").bodies("event.topic_event")[0]
+        assert msg.topic_id == TOPIC_AT_BOT_BODY["topic_id"]
+        assert msg.is_channel is True
 
     def test_raw_payload_preserved(self):
         body = {**TOPIC_AT_BOT_BODY, "event": {"eventtype": "topic_event", "extra": {"k": "v"}}}
         emitter = dispatch(body, cmd="aibot_event_callback")
         msg = emitter.bodies("event.topic_event")[0]
-        assert isinstance(msg.event, TopicEvent)
-        assert msg.event.eventtype == EventType.TOPIC_EVENT
         assert msg.event.data["extra"] == {"k": "v"}
+        assert msg.event.type is None
         assert len(emitter.bodies("event.topic")) == 1
+
+    def test_missing_nested_object(self):
+        body = {**TOPIC_AT_BOT_BODY, "event": {"eventtype": "topic_event"}}
+        msg = dispatch(body, cmd="aibot_event_callback").bodies("event.topic_event")[0]
+        assert msg.event.type is None
+        assert msg.event.post_id is None
 
 
 class TestUnknownEvent:

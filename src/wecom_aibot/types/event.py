@@ -63,10 +63,13 @@ class TopicAtBotEvent:
 class TopicEvent:
     """频道（话题）事件
 
-    平台侧 payload 结构未公开，完整原始数据放在 data 中
+    实测载荷：{"eventtype": "topic_event", "topic_event": {"type": 1, "post_id": "..."}}
+    type 的具体语义未公开，data 保留完整原始事件供后续扩展
     """
 
     eventtype: Literal[EventType.TOPIC_EVENT] = EventType.TOPIC_EVENT
+    type: int | None = None
+    post_id: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
 
 

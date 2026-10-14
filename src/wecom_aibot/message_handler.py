@@ -324,7 +324,12 @@ class MessageHandler:
         elif event_type == EventType.TOPIC_AT_BOT:
             event_content = TopicAtBotEvent(post_id=(event_data.get("topic_at_bot") or {}).get("post_id"))
         elif event_type == EventType.TOPIC_EVENT:
-            event_content = TopicEvent(data=dict(event_data))
+            topic_event = event_data.get("topic_event") or {}
+            event_content = TopicEvent(
+                type=topic_event.get("type"),
+                post_id=topic_event.get("post_id"),
+                data=dict(event_data),
+            )
         else:
             # 未知事件类型，保留原始数据避免信息丢失
             self.logger.debug(f"未处理的事件类型: {event_type}")

@@ -149,7 +149,7 @@ uv run python examples/example_multi_bot.py --config bots_config.json
 | `event.template_card_event` | 模板卡片按钮（更新需 5s 内） |
 | `event.feedback_event` | 用户反馈 |
 | `event.topic_at_bot` | 频道（话题）中 @机器人 |
-| `event.topic_event` | 频道（话题）事件（平台未公开结构，原始数据在 `event.data`） |
+| `event.topic_event` | 频道（话题）事件（`type` / `post_id`，原始数据在 `event.data`） |
 | `event.topic` | 所有频道事件（`eventtype` 以 `topic` 开头） |
 
 ### 客户端方法
@@ -216,9 +216,14 @@ def on_at_bot(frame):
 |------|------|------|
 | `compat_info.source` | 消息 body | `channel` 表示来自频道 |
 | `topic_id` | 事件 body 顶层 | 频道（话题）ID |
-| `event.post_id` | `topic_at_bot` 内 | 被 @ 的帖子 ID |
+| `event.post_id` | `topic_at_bot` / `topic_event` 内 | 相关帖子 ID |
+| `event.type` | `topic_event` 内 | 事件细分类型，语义未公开 |
+
+回复与普通会话一致，`reply_stream` / `reply` 实测在频道内返回 `errcode=0`。
 
 平台可能推送未建模的新事件类型，此时 `event` 为 `UnknownEvent`，原始数据保留在 `event.eventtype` / `event.data`，不会静默丢弃。
+
+> 官方《「话题」介绍》写明「暂不支持使用长连接调用的智能机器人」添加到话题，但长连接实测可收到 `topic_at_bot` / `topic_event` 与频道消息。官方稳定路径仍是 API 模式 + URL 回调，长连接侧按实测兼容，不视为契约。
 
 ## 多机器人管理
 
