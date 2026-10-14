@@ -19,6 +19,8 @@ from wecom_aibot.types.message import (
     MixedMsgItem,
     MessageFrom,
     QuoteContent,
+    MessageSource,
+    CompatInfo,
 )
 from wecom_aibot.types.event import (
     EventType,
@@ -28,6 +30,9 @@ from wecom_aibot.types.event import (
     EnterChatEvent,
     TemplateCardEventData,
     FeedbackEventData,
+    TopicAtBotEvent,
+    TopicEvent,
+    UnknownEvent,
 )
 from wecom_aibot.types.api import (
     WsCmd,
@@ -91,6 +96,8 @@ __all__ = [
     "MixedMsgItem",
     "MessageFrom",
     "QuoteContent",
+    "MessageSource",
+    "CompatInfo",
     # Event types
     "EventType",
     "EventMessage",
@@ -99,6 +106,9 @@ __all__ = [
     "EnterChatEvent",
     "TemplateCardEventData",
     "FeedbackEventData",
+    "TopicAtBotEvent",
+    "TopicEvent",
+    "UnknownEvent",
     # API types
     "WsCmd",
     "WsFrame",

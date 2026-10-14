@@ -167,6 +167,9 @@ class WSClientEventMap:
     event_enter_chat: EventCallback | None = None
     event_template_card_event: EventCallback | None = None
     event_feedback_event: EventCallback | None = None
+    event_topic: EventCallback | None = None
+    event_topic_at_bot: EventCallback | None = None
+    event_topic_event: EventCallback | None = None
     # 连接事件
     connected: VoidCallback | None = None
     authenticated: VoidCallback | None = None

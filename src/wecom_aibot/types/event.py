@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 from enum import StrEnum
+
+from wecom_aibot.types.message import CompatInfo, is_channel_source
 
 
 class EventType(StrEnum):
@@ -12,6 +14,9 @@ class EventType(StrEnum):
     ENTER_CHAT = "enter_chat"
     TEMPLATE_CARD_EVENT = "template_card_event"
     FEEDBACK_EVENT = "feedback_event"
+    # 频道（话题）相关
+    TOPIC_AT_BOT = "topic_at_bot"
+    TOPIC_EVENT = "topic_event"
 
 
 @dataclass
@@ -45,7 +50,42 @@ class FeedbackEventData:
     eventtype: Literal[EventType.FEEDBACK_EVENT] = EventType.FEEDBACK_EVENT
 
 
-EventContent = EnterChatEvent | TemplateCardEventData | FeedbackEventData
+@dataclass
+class TopicAtBotEvent:
+    """频道（话题）中 @机器人 事件"""
+
+    eventtype: Literal[EventType.TOPIC_AT_BOT] = EventType.TOPIC_AT_BOT
+    # 被 @ 的帖子 ID
+    post_id: str | None = None
+
+
+@dataclass
+class TopicEvent:
+    """频道（话题）事件
+
+    平台侧 payload 结构未公开，完整原始数据放在 data 中
+    """
+
+    eventtype: Literal[EventType.TOPIC_EVENT] = EventType.TOPIC_EVENT
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class UnknownEvent:
+    """未识别的事件类型，保留原始数据避免信息丢失"""
+
+    eventtype: str
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+EventContent = (
+    EnterChatEvent
+    | TemplateCardEventData
+    | FeedbackEventData
+    | TopicAtBotEvent
+    | TopicEvent
+    | UnknownEvent
+)
 
 
 @dataclass
@@ -60,3 +100,17 @@ class EventMessage:
     event: EventContent
     chatid: str | None = None
     chattype: Literal["single", "group"] | None = None
+    # 频道（话题）ID，位于事件回调 body 顶层
+    topic_id: str | None = None
+    compat_info: CompatInfo | None = None
+    # 原始数据
+    _raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self):
+        if not self._raw:
+            self._raw = {}
+
+    @property
+    def is_channel(self) -> bool:
+        """事件是否来自「频道」（chattype 可能缺失，需看 compat_info.source 或 topic_id）"""
+        return is_channel_source(self.compat_info) or bool(self.topic_id)

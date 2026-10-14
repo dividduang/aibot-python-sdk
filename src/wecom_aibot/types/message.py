@@ -17,6 +17,29 @@ class MessageType(StrEnum):
     VIDEO = "video"
 
 
+class MessageSource(StrEnum):
+    """消息来源（compat_info.source）
+
+    注意：频道消息的 chattype 仍为 group，判定频道必须看 compat_info.source
+    """
+
+    CHANNEL = "channel"
+
+
+@dataclass
+class CompatInfo:
+    """兼容信息结构体"""
+
+    source: MessageSource | str | None = None
+    # 原始数据
+    _raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
+def is_channel_source(compat_info: CompatInfo | None) -> bool:
+    """判断 compat_info 是否表示消息来自「频道」"""
+    return compat_info is not None and compat_info.source == MessageSource.CHANNEL
+
+
 @dataclass
 class TextContent:
     """文本结构体"""
@@ -104,6 +127,7 @@ class BaseMessage:
     create_time: int | None = None
     response_url: str | None = None
     quote: QuoteContent | None = None
+    compat_info: CompatInfo | None = None
     # 原始数据
     _raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -111,6 +135,11 @@ class BaseMessage:
         # 存储原始数据
         if not self._raw:
             self._raw = {}
+
+    @property
+    def is_channel(self) -> bool:
+        """消息是否来自「频道」（chattype 仍为 group，需看 compat_info.source）"""
+        return is_channel_source(self.compat_info)
 
 
 @dataclass

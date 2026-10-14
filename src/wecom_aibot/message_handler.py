@@ -4,7 +4,8 @@
 """
 
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any
+from dataclasses import fields
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from wecom_aibot.types import Logger, WsFrame
 from wecom_aibot.types.message import (
@@ -25,6 +26,7 @@ from wecom_aibot.types.message import (
     MixedMsgItem,
     MessageFrom,
     QuoteContent,
+    CompatInfo,
 )
 from wecom_aibot.types.event import (
     EventType,
@@ -33,12 +35,17 @@ from wecom_aibot.types.event import (
     EnterChatEvent,
     TemplateCardEventData,
     FeedbackEventData,
+    TopicAtBotEvent,
+    TopicEvent,
+    UnknownEvent,
 )
 from wecom_aibot.types.api import WsCmd
 from wecom_aibot.logger import DefaultLogger
 
 if TYPE_CHECKING:
     from wecom_aibot.client import WSClient
+
+_MsgT = TypeVar("_MsgT", bound=BaseMessage)
 
 
 class MessageHandler:
@@ -137,8 +144,14 @@ class MessageHandler:
             emitter.emit("event.template_card_event", WsFrame(headers=frame.headers, cmd=frame.cmd, body=event_msg))
         elif event_type == EventType.FEEDBACK_EVENT:
             emitter.emit("event.feedback_event", WsFrame(headers=frame.headers, cmd=frame.cmd, body=event_msg))
-        else:
-            self.logger.debug(f"未处理的事件类型: {event_type}")
+        elif event_type == EventType.TOPIC_AT_BOT:
+            emitter.emit("event.topic_at_bot", WsFrame(headers=frame.headers, cmd=frame.cmd, body=event_msg))
+        elif event_type == EventType.TOPIC_EVENT:
+            emitter.emit("event.topic_event", WsFrame(headers=frame.headers, cmd=frame.cmd, body=event_msg))
+
+        # 所有频道（话题）事件统一走 event.topic
+        if isinstance(event_type, str) and event_type.startswith("topic"):
+            emitter.emit("event.topic", WsFrame(headers=frame.headers, cmd=frame.cmd, body=event_msg))
 
     def _parse_base_message(self, body: dict[str, Any]) -> BaseMessage:
         """解析基础消息字段"""
@@ -159,38 +172,35 @@ class MessageHandler:
             create_time=body.get("create_time"),
             response_url=body.get("response_url"),
             quote=quote,
+            compat_info=self._parse_compat_info(body.get("compat_info")),
             _raw=body,
         )
+
+    def _parse_compat_info(self, data: Any) -> CompatInfo | None:
+        """解析兼容信息（频道消息的 source=channel 由此判定）"""
+        if not isinstance(data, dict):
+            return None
+        return CompatInfo(source=data.get("source"), _raw=data)
+
+    def _build_message(self, payload_cls: type[_MsgT], base: BaseMessage, **extra: Any) -> _MsgT:
+        """在 BaseMessage 之上构造具体消息类型，基础字段（含 compat_info）自动继承"""
+        return payload_cls(**{f.name: getattr(base, f.name) for f in fields(base)}, **extra)
 
     def _parse_text_message(self, body: dict[str, Any], base: BaseMessage) -> TextMessage:
         """解析文本消息"""
         text_data = body.get("text", {})
-        return TextMessage(
-            msgid=base.msgid,
-            aibotid=base.aibotid,
-            chattype=base.chattype,
-            from_=base.from_,
-            chatid=base.chatid,
-            create_time=base.create_time,
-            response_url=base.response_url,
-            quote=base.quote,
-            _raw=base._raw,
+        return self._build_message(
+            TextMessage,
+            base,
             text=TextContent(content=text_data.get("content", "")),
         )
 
     def _parse_image_message(self, body: dict[str, Any], base: BaseMessage) -> ImageMessage:
         """解析图片消息"""
         image_data = body.get("image", {})
-        return ImageMessage(
-            msgid=base.msgid,
-            aibotid=base.aibotid,
-            chattype=base.chattype,
-            from_=base.from_,
-            chatid=base.chatid,
-            create_time=base.create_time,
-            response_url=base.response_url,
-            quote=base.quote,
-            _raw=base._raw,
+        return self._build_message(
+            ImageMessage,
+            base,
             image=ImageContent(
                 url=image_data.get("url", ""),
                 aeskey=image_data.get("aeskey"),
@@ -212,48 +222,27 @@ class MessageHandler:
                 image = ImageContent(url=img_data.get("url", ""), aeskey=img_data.get("aeskey"))
             msg_items.append(MixedMsgItem(msgtype=msgtype, text=text, image=image))
 
-        return MixedMessage(
-            msgid=base.msgid,
-            aibotid=base.aibotid,
-            chattype=base.chattype,
-            from_=base.from_,
-            chatid=base.chatid,
-            create_time=base.create_time,
-            response_url=base.response_url,
-            quote=base.quote,
-            _raw=base._raw,
+        return self._build_message(
+            MixedMessage,
+            base,
             mixed=MixedContent(msg_item=msg_items),
         )
 
     def _parse_voice_message(self, body: dict[str, Any], base: BaseMessage) -> VoiceMessage:
         """解析语音消息"""
         voice_data = body.get("voice", {})
-        return VoiceMessage(
-            msgid=base.msgid,
-            aibotid=base.aibotid,
-            chattype=base.chattype,
-            from_=base.from_,
-            chatid=base.chatid,
-            create_time=base.create_time,
-            response_url=base.response_url,
-            quote=base.quote,
-            _raw=base._raw,
+        return self._build_message(
+            VoiceMessage,
+            base,
             voice=VoiceContent(content=voice_data.get("content", "")),
         )
 
     def _parse_file_message(self, body: dict[str, Any], base: BaseMessage) -> FileMessage:
         """解析文件消息"""
         file_data = body.get("file", {})
-        return FileMessage(
-            msgid=base.msgid,
-            aibotid=base.aibotid,
-            chattype=base.chattype,
-            from_=base.from_,
-            chatid=base.chatid,
-            create_time=base.create_time,
-            response_url=base.response_url,
-            quote=base.quote,
-            _raw=base._raw,
+        return self._build_message(
+            FileMessage,
+            base,
             file=FileContent(
                 url=file_data.get("url", ""),
                 aeskey=file_data.get("aeskey"),
@@ -263,16 +252,9 @@ class MessageHandler:
     def _parse_video_message(self, body: dict[str, Any], base: BaseMessage) -> VideoMessage:
         """解析视频消息"""
         video_data = body.get("video", {})
-        return VideoMessage(
-            msgid=base.msgid,
-            aibotid=base.aibotid,
-            chattype=base.chattype,
-            from_=base.from_,
-            chatid=base.chatid,
-            create_time=base.create_time,
-            response_url=base.response_url,
-            quote=base.quote,
-            _raw=base._raw,
+        return self._build_message(
+            VideoMessage,
+            base,
             video=VideoContent(
                 url=video_data.get("url", ""),
                 aeskey=video_data.get("aeskey"),
@@ -322,7 +304,14 @@ class MessageHandler:
         event_type = event_data.get("eventtype", "")
 
         # 解析事件内容
-        event_content: EnterChatEvent | TemplateCardEventData | FeedbackEventData
+        event_content: (
+            EnterChatEvent
+            | TemplateCardEventData
+            | FeedbackEventData
+            | TopicAtBotEvent
+            | TopicEvent
+            | UnknownEvent
+        )
         if event_type == EventType.ENTER_CHAT:
             event_content = EnterChatEvent()
         elif event_type == EventType.TEMPLATE_CARD_EVENT:
@@ -332,9 +321,14 @@ class MessageHandler:
             )
         elif event_type == EventType.FEEDBACK_EVENT:
             event_content = FeedbackEventData()
+        elif event_type == EventType.TOPIC_AT_BOT:
+            event_content = TopicAtBotEvent(post_id=(event_data.get("topic_at_bot") or {}).get("post_id"))
+        elif event_type == EventType.TOPIC_EVENT:
+            event_content = TopicEvent(data=dict(event_data))
         else:
-            # 未知事件类型，使用通用结构
-            event_content = EnterChatEvent()
+            # 未知事件类型，保留原始数据避免信息丢失
+            self.logger.debug(f"未处理的事件类型: {event_type}")
+            event_content = UnknownEvent(eventtype=event_type, data=dict(event_data))
 
         return EventMessage(
             msgid=body.get("msgid", ""),
@@ -348,4 +342,7 @@ class MessageHandler:
             event=event_content,
             chatid=body.get("chatid"),
             chattype=body.get("chattype"),
+            topic_id=body.get("topic_id"),
+            compat_info=self._parse_compat_info(body.get("compat_info")),
+            _raw=body,
         )

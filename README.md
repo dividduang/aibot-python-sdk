@@ -13,6 +13,7 @@
 |------|------|----------|
 | WebSocket 长连接 | 自动认证、心跳、指数退避重连 | ✅ |
 | 消息类型 | text / image / mixed / voice / file / **video** | ✅ |
+| 频道（话题） | `compat_info.source` 判定、`topic_at_bot` / `topic_event` 事件、`topic_id` | — |
 | 流式回复 | Markdown，支持图文混排 | ✅ |
 | 模板卡片 | 回复、流式+卡片、更新卡片 | ✅ |
 | 主动推送 | Markdown / 模板卡片 / 媒体 | ✅ |
@@ -91,6 +92,7 @@ asyncio.run(main())
 | [`examples/example_send_message.py`](./examples/example_send_message.py) | 主动推送 Markdown / 卡片 |
 | [`examples/example_upload_media.py`](./examples/example_upload_media.py) | 上传素材、被动/主动发媒体 |
 | [`examples/example_event_message.py`](./examples/example_event_message.py) | 进入会话 / 卡片交互 / 反馈 |
+| [`examples/example_channel.py`](./examples/example_channel.py) | 频道（话题）消息与 @机器人 事件 |
 | [`examples/example_multi_bot.py`](./examples/example_multi_bot.py) | 多机器人 `BotManager` |
 
 ```bash
@@ -146,6 +148,9 @@ uv run python examples/example_multi_bot.py --config bots_config.json
 | `event.enter_chat` | 用户进入会话（欢迎语需 5s 内） |
 | `event.template_card_event` | 模板卡片按钮（更新需 5s 内） |
 | `event.feedback_event` | 用户反馈 |
+| `event.topic_at_bot` | 频道（话题）中 @机器人 |
+| `event.topic_event` | 频道（话题）事件（平台未公开结构，原始数据在 `event.data`） |
+| `event.topic` | 所有频道事件（`eventtype` 以 `topic` 开头） |
 
 ### 客户端方法
 
@@ -184,6 +189,36 @@ await client.reply_media(frame, "image", result.media_id)
 
 buffer, filename = await client.download_file(url, aes_key)
 ```
+
+### 频道（话题）
+
+频道消息复用群聊语义：`chattype` 仍是 `group`，**判定频道必须看 `compat_info.source == "channel"`**（`is_channel` 属性已封装）。
+
+```python
+from wecom_aibot.types import TopicAtBotEvent
+
+@client.on("message.text")
+async def on_text(frame):
+    msg = frame.body
+    if not msg.is_channel:
+        return
+    # 频道 chatid 与普通群不同前缀，回复照常走 reply_stream
+    await client.reply_stream(frame, generate_req_id("stream"), "收到频道消息", finish=True)
+
+@client.on("event.topic_at_bot")
+def on_at_bot(frame):
+    msg = frame.body                      # EventMessage
+    assert isinstance(msg.event, TopicAtBotEvent)
+    print(msg.topic_id, msg.event.post_id) # 频道 ID / 被 @ 的帖子 ID
+```
+
+| 字段 | 位置 | 说明 |
+|------|------|------|
+| `compat_info.source` | 消息 body | `channel` 表示来自频道 |
+| `topic_id` | 事件 body 顶层 | 频道（话题）ID |
+| `event.post_id` | `topic_at_bot` 内 | 被 @ 的帖子 ID |
+
+平台可能推送未建模的新事件类型，此时 `event` 为 `UnknownEvent`，原始数据保留在 `event.eventtype` / `event.data`，不会静默丢弃。
 
 ## 多机器人管理
 
