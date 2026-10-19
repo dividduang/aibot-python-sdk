@@ -9,10 +9,12 @@ description: 环境与机器人接入（凭证、.env、长连接启动）。当
 
 ## 1. 安装
 
+该包尚未发布到 PyPI，请从 GitHub 源码安装：
+
 ```bash
-pip install wecom-aibot
+pip install "git+https://github.com/dividduang/aibot-python-sdk.git"
 # 或
-uv add wecom-aibot
+uv add "git+https://github.com/dividduang/aibot-python-sdk.git"
 ```
 
 Python >= 3.11。

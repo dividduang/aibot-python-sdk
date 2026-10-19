@@ -25,10 +25,20 @@
 
 ## 安装
 
+该包尚未发布到 PyPI，请从 GitHub 源码安装：
+
 ```bash
-pip install wecom-aibot
+pip install "git+https://github.com/dividduang/aibot-python-sdk.git"
 # 或
-uv add wecom-aibot
+uv add "git+https://github.com/dividduang/aibot-python-sdk.git"
+```
+
+本地开发：
+
+```bash
+git clone https://github.com/dividduang/aibot-python-sdk.git
+cd aibot-python-sdk
+pip install -e .
 ```
 
 ## 快速开始
