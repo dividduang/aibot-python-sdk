@@ -6,6 +6,7 @@
 |-------|------|
 | [`aibot-onboard`](./aibot-onboard/SKILL.md) | 环境、`.env`、长连接启动、常见错误排查 |
 | [`aibot-receive-message`](./aibot-receive-message/SKILL.md) | 接收消息 / 事件 / 被动回复 |
+| [`aibot-channel`](./aibot-channel/SKILL.md) | 频道（话题）识别、触发策略、@机器人 事件 |
 | [`aibot-send-message`](./aibot-send-message/SKILL.md) | 主动推送 Markdown |
 | [`aibot-send-text-card`](./aibot-send-text-card/SKILL.md) | `text_notice` 文本通知卡片 |
 | [`aibot-send-button-card`](./aibot-send-button-card/SKILL.md) | `button_interaction` 按钮交互卡片 |
@@ -16,6 +17,7 @@
 ```text
 onboard                    ← 先做接入
   └─ receive-message       ← 监听用户消息
+       ├─ channel          ← 频道（话题）识别 / 触发策略 / @机器人 事件
        ├─ send-message     ← 直接 Markdown 推送
        ├─ send-text-card   ← 推送通知卡片
        ├─ send-button-card ← 推送按钮卡片 + 更新

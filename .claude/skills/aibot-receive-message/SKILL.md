@@ -108,8 +108,6 @@ async def on_text(frame):
     await client.reply_topic(frame, msg, "收到频道消息", finish=True)
 ```
 
-需要回应话题内每条消息时改配置：`WSClientOptions(..., channel_trigger="all")`。
-
 `topic_at_bot` 事件体既没有正文也没有 `chatid`，靠「用户 + 时间窗」与频道消息配对：
 
 ```python
@@ -119,11 +117,7 @@ async def on_at_bot(frame):
     await client.reply_topic_at_bot(frame.body, "收到你的 @")
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `msg.at_list` | 正文中的 @提及 |
-| `msg.is_mention` | 正文是否以 @ 开头 |
-| `msg.topic_key` | 话题标识（优先 `topic_id`，回退 `chatid`） |
+完整说明（触发策略、字段速查、踩坑）见 `aibot-channel`。
 
 ## 真实抓包日志（2026-07-20）
 
