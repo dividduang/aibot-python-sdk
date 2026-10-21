@@ -38,12 +38,16 @@ class BotManager(AsyncIOEventEmitter):
     - "{bot_name}.message.text"    — 某个机器人收到文本消息
     - "{bot_name}.message.image"   — 某个机器人收到图片消息
     - "{bot_name}.message.mixed"   — 某个机器人收到图文混排消息
-    - "{bot_name}.message.voice"   — 某个机器人收到语音消息
-    - "{bot_name}.message.file"    — 某个机器人收到文件消息
-    - "{bot_name}.event"           — 某个机器人收到事件（通用）
+    - "{bot_name}.message.voice"       — 某个机器人收到语音消息
+    - "{bot_name}.message.file"        — 某个机器人收到文件消息
+    - "{bot_name}.message.video"       — 某个机器人收到视频消息
+    - "{bot_name}.event"               — 某个机器人收到事件（通用）
     - "{bot_name}.event.enter_chat"         — 某个机器人收到进入会话事件
     - "{bot_name}.event.template_card_event" — 某个机器人收到模板卡片事件
     - "{bot_name}.event.feedback_event"     — 某个机器人收到反馈事件
+    - "{bot_name}.event.topic"              — 某个机器人收到频道（话题）事件
+    - "{bot_name}.event.topic_at_bot"       — 某个机器人收到频道 @机器人 事件
+    - "{bot_name}.event.topic_event"        — 某个机器人收到频道（话题）事件
     - "bot.connected"              — 任意机器人连接成功
     - "bot.disconnected"           — 任意机器人断开连接
     - "bot.error"                  — 任意机器人发生错误
@@ -288,6 +292,7 @@ class BotManager(AsyncIOEventEmitter):
         for event_name in [
             "message", "message.text", "message.image",
             "message.mixed", "message.voice", "message.file",
+            "message.video",
         ]:
             self._forward_event(client, name, event_name)
 
@@ -295,6 +300,7 @@ class BotManager(AsyncIOEventEmitter):
         for event_name in [
             "event", "event.enter_chat",
             "event.template_card_event", "event.feedback_event",
+            "event.topic", "event.topic_at_bot", "event.topic_event",
         ]:
             self._forward_event(client, name, event_name)
 

@@ -1,6 +1,7 @@
 """消息相关类型定义"""
 
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 from typing import Literal, Any
 from enum import StrEnum
@@ -38,6 +39,31 @@ class CompatInfo:
 def is_channel_source(compat_info: CompatInfo | None) -> bool:
     """判断 compat_info 是否表示消息来自「频道」"""
     return compat_info is not None and compat_info.source == MessageSource.CHANNEL
+
+
+# 正文中的 @提及，形如 "@某人 内容"
+_AT_PATTERN = re.compile(r"@([^\s@]+)")
+_MENTION_PREFIX = re.compile(r"\s*@\S+")
+
+
+def parse_at_list(text_contents: list[str]) -> list[str]:
+    """提取文本片段中的 @提及名称
+
+    实测企微把 @前缀原样放在正文里（如 "@邓景仁的机器人 hello"），
+    因此提及名以空白为界。
+    """
+    at_list: list[str] = []
+    for content in text_contents:
+        at_list.extend(_AT_PATTERN.findall(content))
+    return at_list
+
+
+def is_mention_text(text_contents: list[str]) -> bool:
+    """判断消息是否以 @ 开头（是否在呼叫机器人）"""
+    for content in text_contents:
+        if content.strip():
+            return bool(_MENTION_PREFIX.match(content))
+    return False
 
 
 @dataclass
@@ -128,6 +154,12 @@ class BaseMessage:
     response_url: str | None = None
     quote: QuoteContent | None = None
     compat_info: CompatInfo | None = None
+    # 频道（话题）ID：消息体通常不携带，事件体才有
+    topic_id: str | None = None
+    # 正文中的 @提及（保留原始提及名，便于调用方自行判定）
+    at_list: list[str] = field(default_factory=list)
+    # 正文是否以 @ 开头，即是否在呼叫机器人
+    is_mention: bool = False
     # 原始数据
     _raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -140,6 +172,15 @@ class BaseMessage:
     def is_channel(self) -> bool:
         """消息是否来自「频道」（chattype 仍为 group，需看 compat_info.source）"""
         return is_channel_source(self.compat_info)
+
+    @property
+    def topic_key(self) -> str | None:
+        """标识所属话题的唯一键：优先 topic_id，回退 chatid
+
+        实测频道消息体只有 chatid，而 topic_at_bot 事件体只有 topic_id，
+        两者 id 前缀空间不同，不能互相当作同一个 key。
+        """
+        return self.topic_id or self.chatid
 
 
 @dataclass

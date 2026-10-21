@@ -21,6 +21,8 @@ from wecom_aibot.types.message import (
     QuoteContent,
     MessageSource,
     CompatInfo,
+    parse_at_list,
+    is_mention_text,
 )
 from wecom_aibot.types.event import (
     EventType,
@@ -98,6 +100,8 @@ __all__ = [
     "QuoteContent",
     "MessageSource",
     "CompatInfo",
+    "parse_at_list",
+    "is_mention_text",
     # Event types
     "EventType",
     "EventMessage",

@@ -21,6 +21,8 @@ description: 接收并处理来自企业微信的消息（text/image/file/video/
 | `event.enter_chat` | 用户当天首次点开单聊 | `EventMessage` |
 | `event.template_card_event` | 点击按钮卡片 | `EventMessage` |
 | `event.feedback_event` | 点赞/点踩 | `EventMessage` |
+| `event.topic_at_bot` | 频道（话题）中 @机器人 | `EventMessage` |
+| `event.topic_event` | 频道（话题）事件 | `EventMessage` |
 
 ## 流式回复（最常用）
 
@@ -88,6 +90,40 @@ async def on_feedback(frame):
     # 业务：写入 DB，用于改进回复质量
     print(f"user={frame.body.from_.userid} feedback={frame.body.event}")
 ```
+
+## 频道（话题）
+
+频道消息复用群聊语义：`chattype` 仍是 `group`，**判定频道必须看 `compat_info.source == "channel"`**（`is_channel` 属性已封装）。
+
+> **频道消息是全量推送的**：话题里没有 @机器人 的普通消息同样会到达（与「群聊只有被 @ 才推送」不同）。SDK 默认只回应被 @ 的频道消息。
+
+```python
+@client.on("message.text")
+async def on_text(frame):
+    msg = frame.body
+    if not msg.is_channel:
+        return
+    if not client.should_reply(msg):   # 默认只回应 @机器人 的消息
+        return
+    await client.reply_topic(frame, msg, "收到频道消息", finish=True)
+```
+
+需要回应话题内每条消息时改配置：`WSClientOptions(..., channel_trigger="all")`。
+
+`topic_at_bot` 事件体既没有正文也没有 `chatid`，靠「用户 + 时间窗」与频道消息配对：
+
+```python
+@client.on("event.topic_at_bot")
+async def on_at_bot(frame):
+    # 等待被 @ 的那条频道消息到达并自动去重（不会重复回两次）
+    await client.reply_topic_at_bot(frame.body, "收到你的 @")
+```
+
+| 字段 | 说明 |
+|------|------|
+| `msg.at_list` | 正文中的 @提及 |
+| `msg.is_mention` | 正文是否以 @ 开头 |
+| `msg.topic_key` | 话题标识（优先 `topic_id`，回退 `chatid`） |
 
 ## 真实抓包日志（2026-07-20）
 

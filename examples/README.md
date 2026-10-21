@@ -29,6 +29,8 @@ uv sync --extra dev
 | `example_send_message.py` | 主动推送 Markdown / 模板卡片 | `sendMessage` API |
 | `example_upload_media.py` | 分片上传、被动/主动发媒体 | `uploadMedia` / `replyMedia` / `sendMediaMessage` |
 | `example_event_message.py` | enter_chat / template_card / feedback | 事件回调 |
+| `example_channel.py` | 频道（话题）消息、@机器人 事件、默认触发策略 | — |
+| `example_topic_trigger.py` | 频道全量触发（`channel_trigger="all"`） | — |
 | `example_multi_bot.py` | 多机器人 `BotManager`（Python 增强） | — |
 
 ## 运行
@@ -38,6 +40,8 @@ uv run python examples/example_basic.py
 uv run python examples/example_send_message.py
 uv run python examples/example_upload_media.py
 uv run python examples/example_event_message.py
+uv run python examples/example_channel.py
+uv run python examples/example_topic_trigger.py
 uv run python examples/example_multi_bot.py
 uv run python examples/example_multi_bot.py --config bots_config.json
 ```

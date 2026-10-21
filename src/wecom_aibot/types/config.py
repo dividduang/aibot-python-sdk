@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Protocol, Any
+from typing import Literal, Protocol, Any
 
 
 class Logger(Protocol):
@@ -32,6 +32,14 @@ class WSClientOptions:
     request_timeout: int = 10000
     # 自定义 WebSocket 连接地址，默认 wss://openws.work.weixin.qq.com
     ws_url: str = "wss://openws.work.weixin.qq.com"
+    # 频道（话题）触发策略：
+    #   mention —— 只回应正文以 @ 开头的频道消息（默认）
+    #   all     —— 回应话题内的每一条消息
+    # 企微对「群」是只有被 @ 才推送，但实测对「频道」是全量推送，
+    # 沿用群的假设会导致逐条刷屏，故默认取 mention。
+    channel_trigger: Literal["mention", "all"] = "mention"
+    # 频道消息与 topic_at_bot 事件配对的时间窗（秒），默认 30
+    channel_pair_window: float = 30.0
     # 自定义日志函数
     logger: Logger | None = None
 

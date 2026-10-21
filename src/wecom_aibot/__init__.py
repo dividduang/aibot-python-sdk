@@ -8,6 +8,7 @@
 from wecom_aibot.client import WSClient
 from wecom_aibot.bot_manager import BotManager
 from wecom_aibot.logger import DefaultLogger
+from wecom_aibot.topic_tracker import TopicMentionTracker
 from wecom_aibot.utils import generate_req_id, generate_random_string
 from wecom_aibot.types import (
     MessageType,
@@ -45,6 +46,8 @@ __all__ = [
     "WSClient",
     # Multi-bot manager
     "BotManager",
+    # 频道（话题）配对追踪器
+    "TopicMentionTracker",
     # Logger
     "DefaultLogger",
     # Utils

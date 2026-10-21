@@ -117,3 +117,11 @@ class EventMessage:
     def is_channel(self) -> bool:
         """事件是否来自「频道」（chattype 可能缺失，需看 compat_info.source 或 topic_id）"""
         return is_channel_source(self.compat_info) or bool(self.topic_id)
+
+    @property
+    def topic_key(self) -> str | None:
+        """标识所属话题的唯一键：优先 topic_id，回退 chatid
+
+        实测 topic_at_bot 事件体只有 topic_id，与消息体的 chatid 前缀空间不同。
+        """
+        return self.topic_id or self.chatid

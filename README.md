@@ -14,6 +14,7 @@
 | WebSocket 长连接 | 自动认证、心跳、指数退避重连 | ✅ |
 | 消息类型 | text / image / mixed / voice / file / **video** | ✅ |
 | 频道（话题） | `compat_info.source` 判定、`topic_at_bot` / `topic_event` 事件、`topic_id` | — |
+| 频道触发策略 | 默认仅回应 @机器人 的消息；`channel_trigger="all"` 可回应话题内全部消息 | — |
 | 流式回复 | Markdown，支持图文混排 | ✅ |
 | 模板卡片 | 回复、流式+卡片、更新卡片 | ✅ |
 | 主动推送 | Markdown / 模板卡片 / 媒体 | ✅ |
@@ -102,7 +103,8 @@ asyncio.run(main())
 | [`examples/example_send_message.py`](./examples/example_send_message.py) | 主动推送 Markdown / 卡片 |
 | [`examples/example_upload_media.py`](./examples/example_upload_media.py) | 上传素材、被动/主动发媒体 |
 | [`examples/example_event_message.py`](./examples/example_event_message.py) | 进入会话 / 卡片交互 / 反馈 |
-| [`examples/example_channel.py`](./examples/example_channel.py) | 频道（话题）消息与 @机器人 事件 |
+| [`examples/example_channel.py`](./examples/example_channel.py) | 频道（话题）消息与 @机器人 事件（默认触发策略） |
+| [`examples/example_topic_trigger.py`](./examples/example_topic_trigger.py) | 频道全量触发（`channel_trigger="all"`） |
 | [`examples/example_multi_bot.py`](./examples/example_multi_bot.py) | 多机器人 `BotManager` |
 
 ```bash
@@ -124,6 +126,8 @@ uv run python examples/example_multi_bot.py --config bots_config.json
 | `reconnect_interval` | int | 1000 | 重连基础延迟（毫秒） |
 | `request_timeout` | int | 10000 | HTTP 请求超时（毫秒） |
 | `ws_url` | str | `wss://openws.work.weixin.qq.com` | WebSocket 地址 |
+| `channel_trigger` | `"mention"` \| `"all"` | `"mention"` | 频道触发策略：`mention` 只回应 @机器人 的消息，`all` 回应话题内全部消息 |
+| `channel_pair_window` | float | 30.0 | 频道消息与 `topic_at_bot` 事件配对的时间窗（秒） |
 | `logger` | Logger | None | 自定义日志器 |
 
 ### 事件列表
@@ -158,7 +162,7 @@ uv run python examples/example_multi_bot.py --config bots_config.json
 | `event.enter_chat` | 用户进入会话（欢迎语需 5s 内） |
 | `event.template_card_event` | 模板卡片按钮（更新需 5s 内） |
 | `event.feedback_event` | 用户反馈 |
-| `event.topic_at_bot` | 频道（话题）中 @机器人 |
+| `event.topic_at_bot` | 频道（话题）中 @机器人（无正文，靠配对还原被 @ 的消息） |
 | `event.topic_event` | 频道（话题）事件（`type` / `post_id`，原始数据在 `event.data`） |
 | `event.topic` | 所有频道事件（`eventtype` 以 `topic` 开头） |
 
@@ -181,6 +185,11 @@ uv run python examples/example_multi_bot.py --config bots_config.json
 | `reply_media` / `replyMedia` | 被动回复媒体 |
 | `send_media_message` / `sendMediaMessage` | 主动发送媒体 |
 | `download_file(url, aes_key?)` | 下载并 AES 解密 |
+| `should_reply(message)` | 按频道触发策略判断是否应回应 |
+| `reply_topic(frame, message, content)` | 回应频道消息（按策略 + 去重） |
+| `reply_topic_at_bot(event, content)` | 回应 `topic_at_bot` 事件（自动配对被 @ 的消息） |
+| `topic_tracker` | 频道消息 / 事件配对追踪器 |
+| `options` | 客户端配置 |
 | `is_connected` | 连接状态 |
 | `api` | 底层 HTTP 客户端 |
 
@@ -204,6 +213,8 @@ buffer, filename = await client.download_file(url, aes_key)
 
 频道消息复用群聊语义：`chattype` 仍是 `group`，**判定频道必须看 `compat_info.source == "channel"`**（`is_channel` 属性已封装）。
 
+> **频道消息是全量推送的**：话题里没有 @机器人 的普通消息同样会到达（与「群聊只有被 @ 才推送」不同）。因此 SDK 默认只回应被 @ 的频道消息，避免逐条刷屏。
+
 ```python
 from wecom_aibot.types import TopicAtBotEvent
 
@@ -212,8 +223,11 @@ async def on_text(frame):
     msg = frame.body
     if not msg.is_channel:
         return
-    # 频道 chatid 与普通群不同前缀，回复照常走 reply_stream
-    await client.reply_stream(frame, generate_req_id("stream"), "收到频道消息", finish=True)
+    # should_reply 按 channel_trigger 策略判断（默认只回应被 @ 的消息）
+    if not client.should_reply(msg):
+        return
+    # reply_topic 内部做去重：同一次 @ 不会回答两次
+    await client.reply_topic(frame, msg, "收到频道消息", finish=True)
 
 @client.on("event.topic_at_bot")
 def on_at_bot(frame):
@@ -222,12 +236,34 @@ def on_at_bot(frame):
     print(msg.topic_id, msg.event.post_id) # 频道 ID / 被 @ 的帖子 ID
 ```
 
+需要回应话题内的每一条消息时，把触发策略改为全量：
+
+```python
+client = WSClient(WSClientOptions(bot_id=..., secret=..., channel_trigger="all"))
+```
+
 | 字段 | 位置 | 说明 |
 |------|------|------|
 | `compat_info.source` | 消息 body | `channel` 表示来自频道 |
 | `topic_id` | 事件 body 顶层 | 频道（话题）ID |
 | `event.post_id` | `topic_at_bot` / `topic_event` 内 | 相关帖子 ID |
 | `event.type` | `topic_event` 内 | 事件细分类型，语义未公开 |
+| `msg.at_list` | 消息 | 正文中的 @提及（保留原始提及名） |
+| `msg.is_mention` | 消息 | 正文是否以 @ 开头，即是否在呼叫机器人 |
+| `msg.topic_key` | 消息 / 事件 | 话题标识：优先 `topic_id`，回退 `chatid` |
+
+**消息与事件的 id 空间不同**：频道消息体只有 `chatid`，`topic_at_bot` 事件体只有 `topic_id`，两者前缀空间不同，不能互相当作同一个 key。因此事件与消息通过「用户 + 时间窗」配对（`TopicMentionTracker`）：
+
+```python
+# 事件到达时，还原「用户被 @ 时到底说了什么」
+@client.on("event.topic_at_bot")
+async def on_at_bot(frame):
+    event = frame.body
+    # 等待被 @ 的那条频道消息到达（默认等待 channel_pair_window 秒）
+    await client.reply_topic_at_bot(event, "收到你的 @")
+```
+
+`reply_topic_at_bot` 会自动配对、去重并用原始消息帧回复；已通过消息路径回答过的 @ 不会重复回答。
 
 回复与普通会话一致，`reply_stream` / `reply` 实测在频道内返回 `errcode=0`。
 

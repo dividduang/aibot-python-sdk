@@ -31,9 +31,12 @@ from wecom_aibot.types import (
     UploadMediaFinishResult,
 )
 from wecom_aibot.types.api import WsCmd
+from wecom_aibot.types.message import BaseMessage
+from wecom_aibot.types.event import EventMessage
 from wecom_aibot.ws_manager import WsConnectionManager
 from wecom_aibot.api_client import WeComApiClient
 from wecom_aibot.message_handler import MessageHandler
+from wecom_aibot.topic_tracker import TopicMentionTracker
 from wecom_aibot.logger import DefaultLogger
 from wecom_aibot.utils import generate_req_id
 from wecom_aibot.exceptions import (
@@ -56,12 +59,13 @@ class WSClient(AsyncIOEventEmitter):
     - 文件下载与解密
     """
 
-    def __init__(self, options: WSClientOptions):
+    def __init__(self, options: WSClientOptions, tracker: TopicMentionTracker | None = None):
         """
         初始化客户端
 
         Args:
             options: 配置选项，包含 bot_id、secret 等
+            tracker: 频道（话题）配对追踪器，默认按 options.channel_pair_window 创建
         """
         super().__init__()
 
@@ -74,6 +78,8 @@ class WSClient(AsyncIOEventEmitter):
             logger=self._logger,
             timeout=options.request_timeout,
         )
+        # 频道（话题）消息与 @机器人 事件的配对 / 去重
+        self._topic_tracker = tracker or TopicMentionTracker(window=options.channel_pair_window)
         self._ws_manager = WsConnectionManager(
             logger=self._logger,
             heartbeat_interval=options.heartbeat_interval,
@@ -81,7 +87,7 @@ class WSClient(AsyncIOEventEmitter):
             max_reconnect_attempts=options.max_reconnect_attempts,
             ws_url=options.ws_url,
         )
-        self._message_handler = MessageHandler(logger=self._logger)
+        self._message_handler = MessageHandler(logger=self._logger, tracker=self._topic_tracker)
 
         # 设置凭证
         self._ws_manager.set_credentials(options.bot_id, options.secret)
@@ -212,6 +218,118 @@ class WSClient(AsyncIOEventEmitter):
             feedback=feedback,
         )
         return await self.reply(frame, body)
+
+    # ── 频道（话题）─────────────────────────────────────────
+
+    @property
+    def options(self) -> WSClientOptions:
+        """获取客户端配置（可读取 channel_trigger 等频道相关选项）"""
+        return self._options
+
+    @property
+    def topic_tracker(self) -> TopicMentionTracker:
+        """获取频道消息与 @机器人 事件的配对追踪器"""
+        return self._topic_tracker
+
+    def should_reply(self, message: BaseMessage) -> bool:
+        """
+        判断该消息是否应当被回应（按 channel_trigger 策略）
+
+        频道消息是全量推送的：话题里没有 @机器人 的普通消息同样会到达，
+        与「群聊只有被 @ 才推送」不同。因此默认策略为 mention，
+        只回应正文以 @ 开头的频道消息，或平台已通过 topic_at_bot 事件确认被 @ 的消息。
+
+        Args:
+            message: 待判断的消息
+
+        Returns:
+            True 表示应当回应
+        """
+        if not message.is_channel:
+            return True
+        if self._options.channel_trigger == "all":
+            return True
+        return message.is_mention or self._topic_tracker.is_released(message)
+
+    async def reply_topic(
+        self,
+        frame: WsFrameHeaders | None,
+        message: BaseMessage,
+        content: str,
+        finish: bool = True,
+    ) -> WsFrame | None:
+        """
+        回应一条频道（话题）消息，同一次 @ 只回应一次
+
+        - 按 channel_trigger 策略判断是否回应（默认只回应被 @ 的消息）
+        - 用追踪器去重，避免「频道消息 + topic_at_bot 事件」两条通路重复回答
+        - frame 传 None 时，自动使用该消息被接收时的原始回调帧
+
+        Args:
+            frame: 回复使用的回调帧（透传 headers.req_id），None 表示自动取原始帧
+            message: 被回应的频道消息
+            content: 回复内容（支持 Markdown）
+            finish: 是否结束流式消息，默认 True
+
+        Returns:
+            回执帧；若按策略跳过或已回答过则返回 None
+        """
+        if not self.should_reply(message):
+            self._logger.debug(f"频道消息未触发回复策略（trigger={self._options.channel_trigger}）")
+            return None
+
+        if self._topic_tracker.already_answered_similar(message):
+            self._logger.debug("该次 @ 已回复过，跳过")
+            return None
+
+        if frame is None:
+            frame = self._topic_tracker.frame_for(message)
+        if frame is None:
+            self._logger.warn("找不到该频道消息对应的回调帧，无法回复")
+            return None
+
+        self._topic_tracker.mark_answered(message)
+        try:
+            return await self.reply_stream(frame, generate_req_id("stream"), content, finish=finish)
+        except Exception:
+            # 发送失败时回滚标记，允许重试
+            self._topic_tracker.unmark_answered(message)
+            raise
+
+    async def reply_topic_at_bot(
+        self,
+        event: EventMessage,
+        content: str,
+        finish: bool = True,
+        timeout: float | None = None,
+    ) -> WsFrame | None:
+        """
+        回应一条 topic_at_bot 事件：找回被 @ 的那条频道消息并回复
+
+        事件体既没有正文也没有 chatid，需要靠「用户 + 时间窗」与频道消息配对；
+        若消息尚未到达，会等待至 timeout（默认取配对时间窗）秒。
+
+        Args:
+            event: topic_at_bot 事件消息
+            content: 回复内容（支持 Markdown）
+            finish: 是否结束流式消息，默认 True
+            timeout: 等待被 @ 消息到达的超时秒数
+
+        Returns:
+            回执帧；若未找到配对消息、已回复过或按策略跳过则返回 None
+        """
+        message = await self._topic_tracker.wait_for_message(event, timeout=timeout)
+        if message is None:
+            self._logger.debug("未找到与 @机器人 事件配对的频道消息")
+            return None
+
+        # 平台已通过事件确认被 @，放行这条消息
+        if not self.should_reply(message) and not self._topic_tracker.is_released(message):
+            self._logger.debug("该频道消息未触发回复策略（trigger=%s）", self._options.channel_trigger)
+            return None
+
+        return await self.reply_topic(None, message, content, finish=finish)
+
 
     async def reply_welcome(
         self,

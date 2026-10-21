@@ -27,6 +27,8 @@ from wecom_aibot.types.message import (
     MessageFrom,
     QuoteContent,
     CompatInfo,
+    parse_at_list,
+    is_mention_text,
 )
 from wecom_aibot.types.event import (
     EventType,
@@ -44,6 +46,7 @@ from wecom_aibot.logger import DefaultLogger
 
 if TYPE_CHECKING:
     from wecom_aibot.client import WSClient
+    from wecom_aibot.topic_tracker import TopicMentionTracker
 
 _MsgT = TypeVar("_MsgT", bound=BaseMessage)
 
@@ -57,8 +60,10 @@ class MessageHandler:
     - 将消息分发为具体的事件类型
     """
 
-    def __init__(self, logger: Logger | None = None):
+    def __init__(self, logger: Logger | None = None, tracker: "TopicMentionTracker | None" = None):
         self.logger = logger or DefaultLogger()
+        # 频道（话题）消息与 @机器人 事件的配对追踪器，可为 None
+        self.tracker = tracker
 
     def handle_frame(self, frame: WsFrame, emitter: "WSClient") -> None:
         """
@@ -96,27 +101,41 @@ class MessageHandler:
         # 触发通用消息事件
         emitter.emit("message", frame)
 
-        # 根据消息类型触发特定事件
-        if msgtype == MessageType.TEXT:
-            message = self._parse_text_message(body, base_msg)
-            emitter.emit("message.text", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
-        elif msgtype == MessageType.IMAGE:
-            message = self._parse_image_message(body, base_msg)
-            emitter.emit("message.image", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
-        elif msgtype == MessageType.MIXED:
-            message = self._parse_mixed_message(body, base_msg)
-            emitter.emit("message.mixed", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
-        elif msgtype == MessageType.VOICE:
-            message = self._parse_voice_message(body, base_msg)
-            emitter.emit("message.voice", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
-        elif msgtype == MessageType.FILE:
-            message = self._parse_file_message(body, base_msg)
-            emitter.emit("message.file", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
-        elif msgtype == MessageType.VIDEO:
-            message = self._parse_video_message(body, base_msg)
-            emitter.emit("message.video", WsFrame(headers=frame.headers, cmd=frame.cmd, body=message))
-        else:
+        # 根据消息类型解析具体消息
+        message = self._parse_typed_message(body, base_msg, msgtype)
+        if message is None:
             self.logger.debug(f"未处理的消息类型: {msgtype}")
+            return
+
+        # 频道（话题）消息登记到配对追踪器，用于与 topic_at_bot 事件配对
+        if self.tracker is not None and message.is_channel:
+            self.tracker.remember_message(message, frame)
+
+        emitter.emit(
+            f"message.{message.msgtype}",
+            WsFrame(headers=frame.headers, cmd=frame.cmd, body=message),
+        )
+
+    def _parse_typed_message(
+        self,
+        body: dict[str, Any],
+        base_msg: BaseMessage,
+        msgtype: str,
+    ) -> BaseMessage | None:
+        """按 msgtype 解析具体消息类型，未知类型返回 None"""
+        if msgtype == MessageType.TEXT:
+            return self._parse_text_message(body, base_msg)
+        if msgtype == MessageType.IMAGE:
+            return self._parse_image_message(body, base_msg)
+        if msgtype == MessageType.MIXED:
+            return self._parse_mixed_message(body, base_msg)
+        if msgtype == MessageType.VOICE:
+            return self._parse_voice_message(body, base_msg)
+        if msgtype == MessageType.FILE:
+            return self._parse_file_message(body, base_msg)
+        if msgtype == MessageType.VIDEO:
+            return self._parse_video_message(body, base_msg)
+        return None
 
     def _handle_event_callback(self, frame: WsFrame, emitter: "WSClient") -> None:
         """处理事件推送回调 (aibot_event_callback)"""
@@ -133,6 +152,10 @@ class MessageHandler:
 
         # 解析事件消息
         event_msg = self._parse_event_message(body, event_data)
+
+        # @机器人 事件登记到配对追踪器，用于找回被 @ 的那条频道消息
+        if self.tracker is not None and event_type == EventType.TOPIC_AT_BOT:
+            self.tracker.remember_event(event_msg)
 
         # 触发通用事件
         emitter.emit("event", WsFrame(headers=frame.headers, cmd=frame.cmd, body=event_msg))
@@ -162,6 +185,11 @@ class MessageHandler:
         if "quote" in body:
             quote = self._parse_quote_content(body["quote"])
 
+        # 解析正文中的 @提及
+        text_contents = self._extract_text_contents(body)
+        at_list = parse_at_list(text_contents)
+        is_mention = is_mention_text(text_contents)
+
         return BaseMessage(
             msgid=body.get("msgid", ""),
             aibotid=body.get("aibotid", ""),
@@ -173,8 +201,34 @@ class MessageHandler:
             response_url=body.get("response_url"),
             quote=quote,
             compat_info=self._parse_compat_info(body.get("compat_info")),
+            topic_id=body.get("topic_id"),
+            at_list=at_list,
+            is_mention=is_mention,
             _raw=body,
         )
+
+    @staticmethod
+    def _extract_text_contents(body: dict[str, Any]) -> list[str]:
+        """提取消息正文中的所有文本片段（text / mixed 的文本项）"""
+        contents: list[str] = []
+
+        text_data = body.get("text")
+        if isinstance(text_data, dict):
+            content = text_data.get("content")
+            if isinstance(content, str):
+                contents.append(content)
+
+        mixed_data = body.get("mixed")
+        if isinstance(mixed_data, dict):
+            for item in mixed_data.get("msg_item", []) or []:
+                if item.get("msgtype") != "text":
+                    continue
+                item_text = item.get("text") or {}
+                content = item_text.get("content")
+                if isinstance(content, str):
+                    contents.append(content)
+
+        return contents
 
     def _parse_compat_info(self, data: Any) -> CompatInfo | None:
         """解析兼容信息（频道消息的 source=channel 由此判定）"""

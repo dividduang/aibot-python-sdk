@@ -4,6 +4,11 @@
 载荷取自 2026-10-14 实测长连接推送：
 - 频道文本消息 compat_info.source = "channel"，chattype 仍为 group
 - 频道 @机器人 事件 eventtype = "topic_at_bot"，topic_id 位于 body 顶层
+
+2026-10-21 复核实测结论：
+- 频道消息是全量推送的：话题里没有 @机器人 的普通消息同样会到达
+  （与「群聊只有被 @ 才推送」不同），故 SDK 默认触发策略为 mention
+- 频道消息体只有 chatid，topic_at_bot 事件体只有 topic_id，两者 id 空间不同
 """
 
 from typing import Any
@@ -192,3 +197,59 @@ class TestUnknownEvent:
         body = {**TOPIC_AT_BOT_BODY, "event": {"eventtype": "brand_new_event"}}
         emitter = dispatch(body, cmd="aibot_event_callback")
         assert emitter.bodies("event.topic") == []
+
+
+class TestChannelMention:
+    """正文里的 @提及解析（频道消息全量推送，需区分是否在呼叫机器人）"""
+
+    def test_channel_message_with_mention(self):
+        msg = dispatch(CHANNEL_MSG_BODY).bodies("message.text")[0]
+        assert msg.is_mention is True
+        assert msg.at_list == ["邓景仁的机器人"]
+
+    def test_plain_topic_message_is_not_a_mention(self):
+        body = {**CHANNEL_MSG_BODY, "text": {"content": "今天天气不错"}}
+        msg = dispatch(body).bodies("message.text")[0]
+        assert msg.is_mention is False
+        assert msg.at_list == []
+
+    def test_mention_not_at_start_is_not_a_mention(self):
+        body = {**CHANNEL_MSG_BODY, "text": {"content": "你好 @邓景仁的机器人"}}
+        msg = dispatch(body).bodies("message.text")[0]
+        assert msg.is_mention is False
+        assert msg.at_list == ["邓景仁的机器人"]
+
+    def test_mixed_message_mentions_extracted(self):
+        body = {
+            **CHANNEL_MSG_BODY,
+            "msgtype": "mixed",
+            "text": None,
+            "mixed": {
+                "msg_item": [
+                    {"msgtype": "text", "text": {"content": "@邓景仁的机器人 hi"}},
+                ]
+            },
+        }
+        body.pop("text")
+        msg = dispatch(body).bodies("message.mixed")[0]
+        assert msg.is_mention is True
+        assert msg.at_list == ["邓景仁的机器人"]
+
+
+class TestTopicKey:
+    """话题标识：消息体只有 chatid，事件体只有 topic_id，id 空间不同"""
+
+    def test_topic_key_falls_back_to_chatid(self):
+        msg = dispatch(CHANNEL_MSG_BODY).bodies("message.text")[0]
+        assert msg.topic_id is None
+        assert msg.topic_key == "opigAJEAAAWzyCngYUB6P-bVF7N1ptjg"
+
+    def test_event_topic_key_is_the_topic_id(self):
+        msg = dispatch(TOPIC_AT_BOT_BODY, cmd="aibot_event_callback").bodies("event.topic_at_bot")[0]
+        assert msg.topic_key == "CiBPl9RgdxBW0+mcOGiVUgYcBjfbYncj9f9WVMqFtZ59HRAB"
+
+    def test_message_and_event_keys_are_not_interchangeable(self):
+        """两个 id 前缀空间不同，不能当成同一个 key"""
+        msg = dispatch(CHANNEL_MSG_BODY).bodies("message.text")[0]
+        event = dispatch(TOPIC_AT_BOT_BODY, cmd="aibot_event_callback").bodies("event.topic_at_bot")[0]
+        assert msg.topic_key != event.topic_key
